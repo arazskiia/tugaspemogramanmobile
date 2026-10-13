@@ -95,7 +95,7 @@ class MainShell extends StatelessWidget {
 }
 
 /// ---------------------------------------------------------------
-/// Bagian "Cara Menggunakan" (dipakai di Beranda & Panduan)
+/// Bagian "Cara Menggunakan"
 /// ---------------------------------------------------------------
 class UsageGuide extends StatelessWidget {
   const UsageGuide({super.key});
@@ -124,7 +124,8 @@ class UsageGuide extends StatelessWidget {
           icon: Icons.pinch,
           title: 'Scale / Pinch',
           description:
-              'Gunakan dua jari pada ikon untuk mengubah ukuran objek.',
+              'Cubit dengan dua jari pada ikon untuk mengubah ukuran objek. '
+              'Di laptop: pinch trackpad, atau Ctrl + scroll, atau tombol + / −.',
         ),
         InstructionItem(
           icon: Icons.swipe,
@@ -217,15 +218,34 @@ class _EnergyDashboardState extends State<EnergyDashboard> {
   String gestureStatus = 'Pilih kartu dan coba gesturenya!';
   DateTime _lastWheel = DateTime.fromMillisecondsSinceEpoch(0);
 
-  // Scroll horizontal mouse / trackpad (atau Shift + scroll wheel).
+  // Ubah ukuran ikon dengan faktor tertentu (dipakai trackpad, Ctrl+scroll, tombol).
+  void _zoomBy(double factor) {
+    setState(() {
+      objectScale = (objectScale * factor).clamp(0.7, 2.0);
+      doubleTapZoom = objectScale > 1.0;
+      gestureStatus = 'Pinch: ukuran objek berubah';
+    });
+  }
+
+  // Pinch trackpad & Ctrl + scroll pada area ikon.
+  void _onIconPointerSignal(PointerSignalEvent event) {
+    if (event is PointerScaleEvent) {
+      _zoomBy(event.scale);
+    } else if (event is PointerScrollEvent &&
+        HardwareKeyboard.instance.isControlPressed) {
+      _zoomBy(event.scrollDelta.dy < 0 ? 1.1 : 0.9);
+    }
+  }
+
+  // Scroll horizontal mouse / trackpad (atau Shift + scroll wheel) untuk ganti kartu.
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
+    if (HardwareKeyboard.instance.isControlPressed) return; // itu untuk zoom
 
     final dx = event.scrollDelta.dx;
     final dy = event.scrollDelta.dy;
     final shift = HardwareKeyboard.instance.isShiftPressed;
 
-    // Shift + scroll wheel: sebagian browser mengirimnya sebagai dy.
     final delta = dx.abs() > dy.abs() ? dx : (shift ? dy : 0.0);
     if (delta.abs() < 10) return;
 
@@ -295,168 +315,198 @@ class _EnergyDashboardState extends State<EnergyDashboard> {
             autofocus: true,
             onKeyEvent: _onKey,
             child: Listener(
-            onPointerSignal: _onPointerSignal,
-            child: GestureDetector(
-            onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity < -100) {
-                changeCard(1);
-              } else if (velocity > 100) {
-                changeCard(-1);
-              }
-            },
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.withValues(alpha: 0.08),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'SUMBER ENERGI ${currentIndex + 1}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            letterSpacing: 1.5,
-                            fontWeight: FontWeight.bold,
-                            color: kGreen,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Sebelumnya',
-                        visualDensity: VisualDensity.compact,
-                        color: kGreen,
-                        icon: const Icon(Icons.chevron_left_rounded),
-                        onPressed: () => changeCard(-1),
-                      ),
-                      IconButton(
-                        tooltip: 'Berikutnya',
-                        visualDensity: VisualDensity.compact,
-                        color: kGreen,
-                        icon: const Icon(Icons.chevron_right_rounded),
-                        onPressed: () => changeCard(1),
+              onPointerSignal: _onPointerSignal,
+              child: GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity < -100) {
+                    changeCard(1);
+                  } else if (velocity > 100) {
+                    changeCard(-1);
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withValues(alpha: 0.08),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-
-                  // Double tap & pinch pada objek ikon energi.
-                  GestureDetector(
-                    onDoubleTap: () {
-                      setState(() {
-                        doubleTapZoom = !doubleTapZoom;
-                        objectScale = doubleTapZoom ? 1.5 : 1.0;
-                        gestureStatus = doubleTapZoom
-                            ? 'Double Tap: objek diperbesar'
-                            : 'Double Tap: ukuran kembali normal';
-                      });
-                    },
-                    onScaleStart: (_) {
-                      baseScale = objectScale;
-                      isPinching = false;
-                    },
-                    onScaleUpdate: (details) {
-                      if (details.pointerCount >= 2) {
-                        isPinching = true;
-                        setState(() {
-                          objectScale =
-                              (baseScale * details.scale).clamp(0.7, 2.0);
-                          doubleTapZoom = objectScale > 1.0;
-                          gestureStatus = 'Pinch: ukuran objek berubah';
-                        });
-                      }
-                    },
-                    // Swipe satu jari di area ikon ditangani di sini,
-                    // karena recognizer scale mengalahkan drag horizontal.
-                    onScaleEnd: (details) {
-                      if (isPinching) return;
-                      final vx = details.velocity.pixelsPerSecond.dx;
-                      if (vx < -300) {
-                        changeCard(1);
-                      } else if (vx > 300) {
-                        changeCard(-1);
-                      }
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      height: 190,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'SUMBER ENERGI ${currentIndex + 1}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                letterSpacing: 1.5,
+                                fontWeight: FontWeight.bold,
+                                color: kGreen,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Sebelumnya',
+                            visualDensity: VisualDensity.compact,
+                            color: kGreen,
+                            icon: const Icon(Icons.chevron_left_rounded),
+                            onPressed: () => changeCard(-1),
+                          ),
+                          IconButton(
+                            tooltip: 'Berikutnya',
+                            visualDensity: VisualDensity.compact,
+                            color: kGreen,
+                            icon: const Icon(Icons.chevron_right_rounded),
+                            onPressed: () => changeCard(1),
+                          ),
+                        ],
                       ),
-                      child: Center(
-                        child: AnimatedScale(
-                          scale: objectScale,
-                          duration: const Duration(milliseconds: 150),
-                          child: Icon(
-                            energy['icon'] as IconData,
-                            size: 100,
-                            color: color,
+                      const SizedBox(height: 4),
+
+                      // Double tap & pinch pada objek ikon energi.
+                      Listener(
+                        onPointerSignal: _onIconPointerSignal,
+                        child: GestureDetector(
+                          onDoubleTap: () {
+                            setState(() {
+                              doubleTapZoom = !doubleTapZoom;
+                              objectScale = doubleTapZoom ? 1.5 : 1.0;
+                              gestureStatus = doubleTapZoom
+                                  ? 'Double Tap: objek diperbesar'
+                                  : 'Double Tap: ukuran kembali normal';
+                            });
+                          },
+                          onScaleStart: (_) {
+                            baseScale = objectScale;
+                            isPinching = false;
+                          },
+                          onScaleUpdate: (details) {
+                            // Layar sentuh (2 jari) ATAU scale berubah (trackpad).
+                            if (details.pointerCount >= 2 ||
+                                details.scale != 1.0) {
+                              isPinching = true;
+                              setState(() {
+                                objectScale = (baseScale * details.scale)
+                                    .clamp(0.7, 2.0);
+                                doubleTapZoom = objectScale > 1.0;
+                                gestureStatus = 'Pinch: ukuran objek berubah';
+                              });
+                            }
+                          },
+                          // Swipe satu jari di area ikon ditangani di sini,
+                          // karena recognizer scale mengalahkan drag horizontal.
+                          onScaleEnd: (details) {
+                            if (isPinching) return;
+                            final vx = details.velocity.pixelsPerSecond.dx;
+                            if (vx < -300) {
+                              changeCard(1);
+                            } else if (vx > 300) {
+                              changeCard(-1);
+                            }
+                          },
+                          child: Stack(
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                height: 190,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Center(
+                                  child: AnimatedScale(
+                                    scale: objectScale,
+                                    duration: const Duration(milliseconds: 60),
+                                    child: Icon(
+                                      energy['icon'] as IconData,
+                                      size: 100,
+                                      color: color,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Tombol cadangan untuk mouse biasa.
+                              Positioned(
+                                right: 8,
+                                bottom: 8,
+                                child: Row(
+                                  children: [
+                                    IconButton.filledTonal(
+                                      tooltip: 'Perkecil',
+                                      visualDensity: VisualDensity.compact,
+                                      icon: const Icon(Icons.remove),
+                                      onPressed: () => _zoomBy(0.85),
+                                    ),
+                                    IconButton.filledTonal(
+                                      tooltip: 'Perbesar',
+                                      visualDensity: VisualDensity.compact,
+                                      icon: const Icon(Icons.add),
+                                      onPressed: () => _zoomBy(1.15),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 20),
-                  Text(
-                    energy['title'] as String,
-                    style: const TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.bold,
-                      color: kTitleGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    energy['subtitle'] as String,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    energy['description'] as String,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(height: 1.5, fontSize: 13),
-                  ),
-                  const SizedBox(height: 20),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      energies.length,
-                      (index) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        height: 8,
-                        width: currentIndex == index ? 24 : 8,
-                        decoration: BoxDecoration(
-                          color: currentIndex == index
-                              ? kGreen
-                              : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(10),
+                      const SizedBox(height: 20),
+                      Text(
+                        energy['title'] as String,
+                        style: const TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.bold,
+                          color: kTitleGreen,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        energy['subtitle'] as String,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        energy['description'] as String,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(height: 1.5, fontSize: 13),
+                      ),
+                      const SizedBox(height: 20),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          energies.length,
+                          (index) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            height: 8,
+                            width: currentIndex == index ? 24 : 8,
+                            decoration: BoxDecoration(
+                              color: currentIndex == index
+                                  ? kGreen
+                                  : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-          ),
           ),
 
           const SizedBox(height: 20),
